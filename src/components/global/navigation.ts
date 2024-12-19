@@ -6,17 +6,27 @@ export const MAIN_NAVIGATION = [
   { path: '/news', label: 'News' },
 ] as const;
 
-export const FOOTER_QUICK_LINKS = [
+// In your navigation.ts file
+
+// Define FooterLink type
+export interface FooterLink {
+  href: string;
+  label: string;
+}
+
+// Declare the arrays as mutable
+export const FOOTER_QUICK_LINKS: FooterLink[] = [
   { href: '/about', label: 'About Us' },
   { href: '/contact', label: 'Contact' },
   { href: '/privacy', label: 'Privacy Policy' },
-] as const;
+];
 
-export const FOOTER_RESOURCES = [
+export const FOOTER_RESOURCES: FooterLink[] = [
   { href: '/blog', label: 'Blog' },
   { href: '/faq', label: 'FAQ' },
   { href: '/support', label: 'Support' },
-] as const;
+];
+
 
 export const SOCIAL_LINKS = [
   { href: '#', label: 'Twitter' },
