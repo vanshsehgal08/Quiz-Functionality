@@ -10,7 +10,7 @@ const credentials = JSON.parse(
   Buffer.from(process.env.GOOGLE_SERVICE_KEY || "", "base64").toString()
 );
 
-// // Initialize Vertex with your Cloud project and location
+// Initialize Vertex with your Cloud project and location
 const vertex_ai = new VertexAI({
   project: "nice-opus-445107-u3",
   location: "us-south1",
@@ -48,46 +48,57 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
   ],
 });
 
+// Function to handle the iterator and stream data properly
 function iteratorToStream(iterator: any) {
   return new ReadableStream({
     async pull(controller) {
-      const { value, done } = await iterator.next();
+      try {
+        const { value, done } = await iterator.next();
 
-      if (done || !value) {
-        controller.close();
-      } else {
-        const data = value.candidates[0].content.parts[0].text;
-
-        // controller.enqueue(`data: ${data}\n\n`);
-        controller.enqueue(data);
+        if (done || !value) {
+          controller.close();
+        } else {
+          const data = value.candidates[0]?.content?.parts[0]?.text;
+          if (data) {
+            controller.enqueue(data);
+          } else {
+            controller.close();
+          }
+        }
+      } catch (error) {
+        console.error("Stream Error:", error);
+        controller.error(error);
       }
     },
   });
 }
 
 export async function POST(req: Request) {
-  const formData = await req.formData();
-  const files = formData.getAll("files") as File[];
-  const notes = formData.get("notes");
-  const totalQuizQuestions = formData.get("quizCount");
-  const difficulty = formData.get("difficulty");
-  const topic = formData.get("topic");
+  try {
+    const formData = await req.formData();
+    const files = formData.getAll("files") as File[];
+    const notes = formData.get("notes");
+    const totalQuizQuestions = formData.get("quizCount");
+    const difficulty = formData.get("difficulty");
+    const topic = formData.get("topic");
 
-  if (files.length < 1 && !notes) {
-    return new NextResponse("Please provide either a file or notes", {
-      status: 400,
-    });
-  }
+    // Validate if there are files or notes provided
+    if (files.length < 1 && !notes) {
+      return new NextResponse("Please provide either a file or notes", {
+        status: 400,
+      });
+    }
 
-  const text1 = {
-    text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${
-      difficulty || "Easy"
-    }.`,
-  };
-  const text2 = {
-    text: `Your response should be in JSON as an array of objects below. Respond with ${
-      totalQuizQuestions || 5
-    } different questions:
+    // Construct the prompt text
+    const text1 = {
+      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${
+        difficulty || "Easy"
+      }.`,
+    };
+    const text2 = {
+      text: `Your response should be in JSON format as an array of objects below. Respond with ${
+        totalQuizQuestions || 5
+      } different questions.
   {
     "id": 1,
     "question": "",
@@ -98,56 +109,56 @@ export async function POST(req: Request) {
       "c": "",
       "d": ""
     },
-    "answer": "",
+    "answer": ""
   }`,
-  };
+    };
 
-  const filesBase64 = await Promise.all(
-    files.map(async (file) => {
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      return buffer.toString("base64");
-    })
-  );
+    // Convert files to base64
+    const filesBase64 = await Promise.all(
+      files.map(async (file) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        return buffer.toString("base64");
+      })
+    );
 
-  const filesData = filesBase64.map((b64, i) => ({
-    inlineData: {
-      mimeType: files[i].type,
-      data: b64,
-    },
-  }));
+    const filesData = filesBase64.map((b64, i) => ({
+      inlineData: {
+        mimeType: files[i].type,
+        data: b64,
+      },
+    }));
 
-  const data =
-    files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
+    const data =
+      files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
 
-  const body = {
-    contents: [{ role: "user", parts: [text1, ...data, text2] }],
-  };
+    // Build the body for the request
+    const body = {
+      contents: [{ role: "user", parts: [text1, ...data, text2] }],
+    };
 
-  // Call the Vertex AI model to generate the content stream
-  const resp = await generativeModel.generateContentStream(body);
+    // Call the generative model API
+    const resp = await generativeModel.generateContentStream(body);
 
-  // Collect the streamed content and format it as JSON
-  let responseText = "";
-  const stream = iteratorToStream(resp.stream);
-  const reader = stream.getReader();
-  
-  // Read the stream and append the content into a response text variable
-  const chunks = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
+    // Log the raw response to check for any issues
+    console.log('API Response:', resp);
+
+    // Convert the response into a friendly text-stream
+    const stream = iteratorToStream(resp.stream);
+
+    // Return the streaming response
+    return new StreamingTextResponse(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Transfer-Encoding": "chunked",
+      },
+    });
+  } catch (error) {
+    console.error("Error processing the request:", error);
+    return new NextResponse("An error occurred while processing your request.", {
+      status: 500,
+    });
   }
-  responseText = chunks.join("");
-
-  // Return the response as JSON after collecting all content
-  const quizQuestions = JSON.parse(responseText); // Ensure the response text is valid JSON
-
-  return new NextResponse(JSON.stringify(quizQuestions), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-cache",
-    },
-  });
 }
