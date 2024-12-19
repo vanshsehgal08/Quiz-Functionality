@@ -91,26 +91,22 @@ export async function POST(req: Request) {
 
     // Construct the prompt text
     const text1 = {
-      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${
-        difficulty || "Easy"
-      }.`,
+      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${difficulty || "Easy"}.`,
     };
     const text2 = {
-      text: `Your response should be in JSON format as an array of objects below. Respond with ${
-        totalQuizQuestions || 5
-      } different questions.
-  {
-    "id": 1,
-    "question": "",
-    "description": "",
-    "options": {
-      "a": "",
-      "b": "",
-      "c": "",
-      "d": ""
-    },
-    "answer": ""
-  }`,
+      text: `Your response should be in JSON format as an array of objects below. Respond with ${totalQuizQuestions || 5} different questions.
+      {
+        "id": 1,
+        "question": "",
+        "description": "",
+        "options": {
+          "a": "",
+          "b": "",
+          "c": "",
+          "d": ""
+        },
+        "answer": ""
+      }`,
     };
 
     // Convert files to base64
@@ -136,6 +132,9 @@ export async function POST(req: Request) {
     const body = {
       contents: [{ role: "user", parts: [text1, ...data, text2] }],
     };
+
+    // Log the body to ensure the structure is correct
+    console.log("Request Body:", JSON.stringify(body, null, 2));
 
     // Call the generative model API
     const resp = await generativeModel.generateContentStream(body);
