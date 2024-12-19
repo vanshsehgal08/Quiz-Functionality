@@ -139,6 +139,11 @@ export async function POST(req: Request) {
     // Call the generative model API
     const resp = await generativeModel.generateContentStream(body);
 
+    // Check if the response contains the expected structure
+    if (!resp || !resp.stream) {
+      throw new Error("Invalid API response structure");
+    }
+
     // Log the raw response to check for any issues
     console.log('API Response:', resp);
 
@@ -156,7 +161,12 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Error processing the request:", error);
-    return new NextResponse("An error occurred while processing your request.", {
+
+    // Respond with more specific error messages
+    const errorMessage =
+      error instanceof Error ? error.message : "An error occurred while processing your request.";
+
+    return new NextResponse(errorMessage, {
       status: 500,
     });
   }
