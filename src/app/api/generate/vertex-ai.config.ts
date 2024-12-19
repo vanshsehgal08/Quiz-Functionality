@@ -1,6 +1,6 @@
 import { HarmBlockThreshold, HarmCategory, VertexAI } from "@google-cloud/vertexai";
+import { API_CONFIG } from "./config";
 
-// Initialize Vertex AI configuration
 export const initVertexAI = () => {
   try {
     const base64Key = process.env.GOOGLE_SERVICE_KEY;
@@ -20,20 +20,21 @@ export const initVertexAI = () => {
       location: "us-south1",
       googleAuthOptions: {
         credentials,
+        timeout: API_CONFIG.TIMEOUT_MS,
       },
     });
   } catch (error) {
     console.error("VertexAI initialization error:", error);
-    throw new Error("Failed to initialize VertexAI: " + (error instanceof Error ? error.message : "Unknown error"));
+    throw new Error("Failed to initialize VertexAI: " + 
+      (error instanceof Error ? error.message : "Unknown error"));
   }
 };
 
-// Model configuration
 export const MODEL_CONFIG = {
   model: "gemini-1.5-pro-preview-0409",
   generationConfig: {
-    maxOutputTokens: 8192,
-    temperature: 0.8, // Reduced for more consistent JSON output
+    maxOutputTokens: 4096, // Reduced for faster response
+    temperature: 0.7,
     topP: 0.95,
   },
   safetySettings: [
