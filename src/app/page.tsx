@@ -1,4 +1,5 @@
-import BugReport from "@/components/global/BugReport";
+// import BugReport from "@/components/global/BugReport";
+import HomeButton from "@/components/global/HomeButton"
 import Navbar from "@/components/global/Navbar";
 import FormContainer from "@/components/pages/FormContainer";
 import Container from "@/components/shared/Container";
@@ -6,20 +7,20 @@ import Container from "@/components/shared/Container";
 import Header from "@/components/shared/Header";
 import Footer from "@/components/global/Footer";
 
-export default async function Home() {
+export default function Home() {
   return (
-    <main className="relative">
-      <Navbar />
-      <Container className="mt-40">
-        <Header
-          title="Studying Doesn't Have to be Boring!"
-          description="Transform your notes or study materials into interactive quizzes to help maximize learning retention"
-        />
-      </Container>
-      <FormContainer />
-      {/* <GeminiBadge /> */}
-      <BugReport />
-      <Footer /> {/* Footer added here */}
-    </main>
+      <main className="relative">
+          <Navbar />
+          <Container className="mt-40">
+              <Header
+                  title="Test Your Knowledge on Climate Change!"
+                  description="Take interactive quizzes to deepen your understanding of environmental issues and climate change. Maximize your learning and contribute to a sustainable future."
+              />
+          </Container>
+          <FormContainer />
+          <HomeButton />
+          <Footer />
+      </main>
   );
 }
+

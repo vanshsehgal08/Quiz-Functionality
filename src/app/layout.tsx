@@ -3,9 +3,9 @@ import { GeistMono, GeistSans } from "@/assets/font";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Quiznote | Powered by Google Gemini",
+  title: "GreenQuest | Quiz",
   description:
-    "Generate quizzes from your notes using the AI-powered quiz generator",
+    "Generate quizzes to test your knowledge",
 };
 
 export default function RootLayout({

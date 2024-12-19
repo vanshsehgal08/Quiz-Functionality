@@ -34,7 +34,7 @@ export default function Form({
                                 type="text"
                                 name="topic"
                                 id="topic"
-                                placeholder="Object-oriented programming in Java"
+                                placeholder="Greenhouse Gases & Global Warming"
                                 className="font-geistmono appearance-none w-full p-3 border border-zinc-200 placeholder-zinc-400 text-zinc-700 rounded-md focus:outline-none focus:ring-zinc-300 text-sm"
                             />
                         </label>
