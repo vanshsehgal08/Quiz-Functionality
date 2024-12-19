@@ -1,117 +1,142 @@
-import { StreamingTextResponse } from "ai";
-import { NextResponse } from "next/server";
-import { initVertexAI, MODEL_CONFIG } from "./vertex-ai.config";
-import { iteratorToStream } from "./stream.utils";
-import { generatePrompt } from "./prompt.utils";
-import { processFiles } from "./file.utils";
-import { API_CONFIG } from "./config";
-
-export const runtime = 'edge'; // Use edge runtime for better performance
-
-export async function POST(req: Request) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT_MS);
-
-  try {
+import {
+    HarmBlockThreshold,
+    HarmCategory,
+    VertexAI,
+  } from "@google-cloud/vertexai";
+  import { StreamingTextResponse } from "ai";
+  import { NextResponse } from "next/server";
+  
+  const credentials = JSON.parse(
+    Buffer.from(process.env.GOOGLE_SERVICE_KEY || "", "base64").toString()
+  );
+  
+  // // Initialize Vertex with your Cloud project and location
+  const vertex_ai = new VertexAI({
+    project: "nice-opus-445107-u3",
+    location: "us-south1",
+    googleAuthOptions: {
+      credentials,
+    },
+  });
+  const model = "gemini-1.5-pro-preview-0409";
+  
+  // Instantiate the models
+  const generativeModel = vertex_ai.preview.getGenerativeModel({
+    model: model,
+    generationConfig: {
+      maxOutputTokens: 8192,
+      temperature: 1,
+      topP: 0.95,
+    },
+    safetySettings: [
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ],
+  });
+  
+  function iteratorToStream(iterator: any) {
+    return new ReadableStream({
+      async pull(controller) {
+        const { value, done } = await iterator.next();
+  
+        if (done || !value) {
+          controller.close();
+        } else {
+          const data = value.candidates[0].content.parts[0].text;
+  
+          // controller.enqueue(`data: ${data}\n\n`);
+          controller.enqueue(data);
+        }
+      },
+    });
+  }
+  
+  export async function POST(req: Request) {
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
     const notes = formData.get("notes");
-    const quizCount = Number(formData.get("quizCount")) || 5;
-    const difficulty = formData.get("difficulty")?.toString() || "Easy";
-
-    // Validate input
-    if (files.length > API_CONFIG.MAX_FILES) {
-      return new NextResponse(`Maximum ${API_CONFIG.MAX_FILES} files allowed`, { 
-        status: 400 
-      });
-    }
-
-    if (files.some(file => file.size > API_CONFIG.MAX_FILE_SIZE)) {
-      return new NextResponse(`Files must be under ${API_CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB`, { 
-        status: 400 
-      });
-    }
-
+    const totalQuizQuestions = formData.get("quizCount");
+    const difficulty = formData.get("difficulty");
+    const topic = formData.get("topic");
+  
     if (files.length < 1 && !notes) {
-      return new NextResponse("Please provide either a file or notes", { 
-        status: 400 
+      return new NextResponse("Please provide either a file or notes", {
+        status: 400,
       });
     }
-
-    // Initialize Vertex AI with timeout
-    const vertexAI = initVertexAI();
-    const generativeModel = vertexAI.preview.getGenerativeModel({
-      ...MODEL_CONFIG,
-      httpOptions: {
-        timeout: API_CONFIG.TIMEOUT_MS,
-        signal: controller.signal,
-      },
-    });
-
-    // Process files or notes with timeout
-    const filesData = await Promise.race([
-      processFiles(files),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("File processing timeout")), API_CONFIG.TIMEOUT_MS)
-      ),
-    ]) as ReturnType<typeof processFiles>;
-
-    const contentData = files.length > 0 
-      ? filesData 
-      : [{ text: notes?.toString() || "No notes" }];
-
-    // Generate prompt and prepare request
-    const promptParts = generatePrompt({ 
-      difficulty, 
-      totalQuizQuestions: quizCount 
-    });
-
-    const body = {
-      contents: [{ 
-        role: "user", 
-        parts: [...promptParts, ...contentData] 
-      }],
+  
+    const text1 = {
+      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficutly of ${
+        difficulty || "Easy"
+      }.`,
     };
-
-    // Get response stream with timeout
-    const resp = await Promise.race([
-      generativeModel.generateContentStream(body),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Model response timeout")), API_CONFIG.TIMEOUT_MS)
-      ),
-    ]) as Awaited<ReturnType<typeof generativeModel.generateContentStream>>;
-
-    if (!resp?.stream) {
-      throw new Error("Invalid API response: Missing stream");
-    }
-
-    // Convert to streaming response
-    const stream = await iteratorToStream(resp.stream);
-
-    clearTimeout(timeoutId);
-
+    const text2 = {
+      text: `You response should be in JSON as an array of the object below. Respond with ${
+        totalQuizQuestions || 5
+      } different questions.
+    {
+     \"id\": 1,
+     \"question\": \"\",
+     \"description\": \"\",
+     \"options\": {
+       \"a\": \"\",
+       \"b\": \"\",
+       \"c\": \"\",
+       \"d\": \"\"
+     },
+     \"answer\": \"\",
+    }`,
+    };
+  
+    const filesBase64 = await Promise.all(
+      files.map(async (file) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        // return "data:" + file.type + ";base64," + buffer.toString("base64");
+        return buffer.toString("base64");
+      })
+    );
+  
+    const filesData = filesBase64.map((b64, i) => ({
+      inlineData: {
+        mimeType: files[i].type,
+        data: b64,
+      },
+    }));
+  
+    const data =
+      files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
+  
+    const body = {
+      contents: [{ role: "user", parts: [text1, ...data, text2] }],
+    };
+  
+    const resp = await generativeModel.generateContentStream(body);
+  
+    // Convert the response into a friendly text-stream
+    const stream = iteratorToStream(resp.stream);
+  
     return new StreamingTextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "Transfer-Encoding": "chunked",
       },
     });
-  } catch (error) {
-    clearTimeout(timeoutId);
-    
-    if (error instanceof Error && error.name === 'AbortError') {
-      return new NextResponse("Request timeout", { status: 504 });
-    }
-
-    console.error("Error processing request:", error);
-    
-    const errorMessage = error instanceof Error 
-      ? error.message 
-      : "An error occurred while processing your request";
-      
-    return new NextResponse(errorMessage, { 
-      status: error instanceof Error && error.name === 'AbortError' ? 504 : 500 
-    });
   }
-}
+  
