@@ -80,11 +80,18 @@ async function safeParseJson(response: string) {
       throw new Error('Empty response');
     }
     return JSON.parse(response);
-  } catch (error) {
-    console.error("Error parsing JSON:", error.message);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      // If the error is an instance of Error, we can access its message
+      console.error("Error parsing JSON:", error.message);
+    } else {
+      // If the error is not an instance of Error, we log a general message
+      console.error("Error parsing JSON: Unknown error type.");
+    }
     throw new Error("Failed to parse JSON");
   }
 }
+
 
 export async function POST(req: Request) {
   try {
