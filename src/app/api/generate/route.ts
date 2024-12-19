@@ -10,7 +10,7 @@ const credentials = JSON.parse(
   Buffer.from(process.env.GOOGLE_SERVICE_KEY || "", "base64").toString()
 );
 
-// Initialize Vertex with your Cloud project and location
+// Initialize Vertex AI
 const vertex_ai = new VertexAI({
   project: "nice-opus-445107-u3",
   location: "us-south1",
@@ -20,7 +20,7 @@ const vertex_ai = new VertexAI({
 });
 const model = "gemini-1.5-pro-preview-0409";
 
-// Instantiate the models
+// Instantiate the generative model
 const generativeModel = vertex_ai.preview.getGenerativeModel({
   model: model,
   generationConfig: {
@@ -48,62 +48,92 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
   ],
 });
 
-// Safe JSON parsing with error handling (used for parsing response chunks)
+// Safe JSON parsing with error handling and validation
 async function safeParseJson(response: string) {
+  if (!response) {
+    throw new Error('Empty response');
+  }
+  
+  // Clean the response string to ensure it's valid JSON
+  let cleanedResponse = response.trim();
+  // Ensure the response starts with [ and ends with ]
+  if (!cleanedResponse.startsWith('[')) cleanedResponse = '[' + cleanedResponse;
+  if (!cleanedResponse.endsWith(']')) cleanedResponse += ']';
+  
   try {
-    if (!response) {
-      throw new Error('Empty response');
+    const parsed = JSON.parse(cleanedResponse);
+    // Validate the structure
+    if (!Array.isArray(parsed)) {
+      throw new Error('Response is not an array');
     }
-    return JSON.parse(response);
-  } catch (error: unknown) {
+    return parsed;
+  } catch (error) {
     if (error instanceof Error) {
       console.error("Error parsing JSON:", error.message);
-    } else {
-      console.error("Error parsing JSON: Unknown error type.");
+      console.error("Raw response data:", response);
+      throw new Error(`Failed to parse JSON: ${error.message}`);
     }
-    throw new Error("Failed to parse JSON");
+    throw new Error('An unknown error occurred while parsing JSON');
   }
 }
 
-// Function to handle the iterator and stream data properly
+// Improved stream handling with better error management
 async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
-  let accumulatedData = ""; // Accumulate response chunks here
+  let accumulatedData = "";
+  let isFirstChunk = true;
 
   return new ReadableStream({
     async pull(controller) {
       try {
         const { value, done } = await iterator.next();
 
-        if (done || !value) {
-          // When done, try parsing the accumulated data if available
+        if (done) {
           if (accumulatedData) {
             try {
+              // Only try to parse as JSON at the end of the stream
               const parsedData = await safeParseJson(accumulatedData);
-              controller.enqueue(parsedData);  // Send parsed data
+              controller.enqueue(JSON.stringify(parsedData));
             } catch (error) {
-              console.error("Error in accumulated data parsing:", error);
-              controller.error(error); // Propagate parsing error
+              if (error instanceof Error) {
+                console.error("Final parsing error:", error.message);
+                controller.error(error);
+              } else {
+                console.error("Unknown final parsing error");
+                controller.error(new Error("Unknown parsing error occurred"));
+              }
             }
           }
           controller.close();
-        } else {
-          // Accumulate data from the stream
-          const data = value.candidates[0]?.content?.parts[0]?.text;
-          if (data) {
-            accumulatedData += data;  // Accumulate the chunked data
-            controller.enqueue(data);  // Continue sending chunks
-          } else {
-            controller.close();
+          return;
+        }
+
+        if (value) {
+          const chunk = value.candidates[0]?.content?.parts[0]?.text;
+          if (chunk) {
+            // Accumulate the data
+            accumulatedData += chunk;
+            
+            // Stream the raw chunk
+            if (isFirstChunk) {
+              controller.enqueue(chunk);
+              isFirstChunk = false;
+            } else {
+              controller.enqueue(chunk);
+            }
           }
         }
       } catch (error) {
-        console.error("Stream Error:", error);
-        controller.error(error);
+        if (error instanceof Error) {
+          console.error("Stream processing error:", error.message);
+          controller.error(error);
+        } else {
+          console.error("Unknown stream processing error");
+          controller.error(new Error("Unknown stream processing error occurred"));
+        }
       }
     },
   });
 }
-
 
 export async function POST(req: Request) {
   try {
@@ -114,14 +144,12 @@ export async function POST(req: Request) {
     const difficulty = formData.get("difficulty");
     const topic = formData.get("topic");
 
-    // Validate if there are files or notes provided
     if (files.length < 1 && !notes) {
       return new NextResponse("Please provide either a file or notes", {
         status: 400,
       });
     }
 
-    // Construct the prompt text
     const text1 = {
       text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${difficulty || "Easy"}.`,
     };
@@ -141,7 +169,6 @@ export async function POST(req: Request) {
       }`,
     };
 
-    // Convert files to base64
     const filesBase64 = await Promise.all(
       files.map(async (file) => {
         const arrayBuffer = await file.arrayBuffer();
@@ -157,39 +184,22 @@ export async function POST(req: Request) {
       },
     }));
 
-    const data =
-      files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
+    const data = files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
 
-    // Build the body for the request
     const body = {
       contents: [{ role: "user", parts: [text1, ...data, text2] }],
     };
 
-    // Log the body to ensure the structure is correct
-    console.log("Request Body:", JSON.stringify(body, null, 2));
-
-    // Call the generative model API
     const resp = await generativeModel.generateContentStream(body);
 
-    // Check if the response contains the expected structure
-    if (!resp || !resp.stream) {
-      throw new Error("Invalid API response structure: Missing stream or data.");
-    }
-
-    // Log the raw response to check for any issues
-    console.log('API Response:', resp);
-
-    // Ensure the response stream has valid data
     if (!resp.stream) {
       return new NextResponse("No content received from the model.", {
         status: 500,
       });
     }
 
-    // Convert the response into a friendly text-stream
     const stream = await iteratorToStream(resp.stream);
 
-    // Return the streaming response
     return new StreamingTextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
@@ -199,12 +209,8 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("Error processing the request:", error);
-
-    // Respond with more specific error messages
-    const errorMessage =
-      error instanceof Error ? error.message : "An error occurred while processing your request.";
-
+    console.error("Error processing the request:", error instanceof Error ? error.message : "Unknown error");
+    const errorMessage = error instanceof Error ? error.message : "An error occurred while processing your request.";
     return new NextResponse(errorMessage, {
       status: 500,
     });
