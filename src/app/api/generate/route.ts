@@ -73,6 +73,19 @@ async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
   });
 }
 
+// Safe JSON parsing with error handling
+async function safeParseJson(response: string) {
+  try {
+    if (!response) {
+      throw new Error('Empty response');
+    }
+    return JSON.parse(response);
+  } catch (error) {
+    console.error("Error parsing JSON:", error.message);
+    throw new Error("Failed to parse JSON");
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
