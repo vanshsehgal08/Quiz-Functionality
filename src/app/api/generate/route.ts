@@ -48,19 +48,50 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
   ],
 });
 
+// Safe JSON parsing with error handling (used for parsing response chunks)
+async function safeParseJson(response: string) {
+  try {
+    if (!response) {
+      throw new Error('Empty response');
+    }
+    return JSON.parse(response);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error("Error parsing JSON:", error.message);
+    } else {
+      console.error("Error parsing JSON: Unknown error type.");
+    }
+    throw new Error("Failed to parse JSON");
+  }
+}
+
 // Function to handle the iterator and stream data properly
 async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
+  let accumulatedData = ""; // Accumulate response chunks here
+
   return new ReadableStream({
     async pull(controller) {
       try {
         const { value, done } = await iterator.next();
 
         if (done || !value) {
+          // When done, try parsing the accumulated data if available
+          if (accumulatedData) {
+            try {
+              const parsedData = await safeParseJson(accumulatedData);
+              controller.enqueue(parsedData);  // Send parsed data
+            } catch (error) {
+              console.error("Error in accumulated data parsing:", error);
+              controller.error(error); // Propagate parsing error
+            }
+          }
           controller.close();
         } else {
+          // Accumulate data from the stream
           const data = value.candidates[0]?.content?.parts[0]?.text;
           if (data) {
-            controller.enqueue(data);
+            accumulatedData += data;  // Accumulate the chunked data
+            controller.enqueue(data);  // Continue sending chunks
           } else {
             controller.close();
           }
@@ -71,25 +102,6 @@ async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
       }
     },
   });
-}
-
-// Safe JSON parsing with error handling
-async function safeParseJson(response: string) {
-  try {
-    if (!response) {
-      throw new Error('Empty response');
-    }
-    return JSON.parse(response);
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      // If the error is an instance of Error, we can access its message
-      console.error("Error parsing JSON:", error.message);
-    } else {
-      // If the error is not an instance of Error, we log a general message
-      console.error("Error parsing JSON: Unknown error type.");
-    }
-    throw new Error("Failed to parse JSON");
-  }
 }
 
 
