@@ -80,25 +80,25 @@ export async function POST(req: Request) {
   }
 
   const text1 = {
-    text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficutly of ${
+    text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${
       difficulty || "Easy"
     }.`,
   };
   const text2 = {
-    text: `You response should be in JSON as an array of the object below. Respond with ${
+    text: `Your response should be in JSON as an array of objects below. Respond with ${
       totalQuizQuestions || 5
-    } different questions.
+    } different questions:
   {
-   \"id\": 1,
-   \"question\": \"\",
-   \"description\": \"\",
-   \"options\": {
-     \"a\": \"\",
-     \"b\": \"\",
-     \"c\": \"\",
-     \"d\": \"\"
-   },
-   \"answer\": \"\",
+    "id": 1,
+    "question": "",
+    "description": "",
+    "options": {
+      "a": "",
+      "b": "",
+      "c": "",
+      "d": ""
+    },
+    "answer": "",
   }`,
   };
 
@@ -106,7 +106,6 @@ export async function POST(req: Request) {
     files.map(async (file) => {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      // return "data:" + file.type + ";base64," + buffer.toString("base64");
       return buffer.toString("base64");
     })
   );
@@ -125,17 +124,30 @@ export async function POST(req: Request) {
     contents: [{ role: "user", parts: [text1, ...data, text2] }],
   };
 
+  // Call the Vertex AI model to generate the content stream
   const resp = await generativeModel.generateContentStream(body);
 
-  // Convert the response into a friendly text-stream
+  // Collect the streamed content and format it as JSON
+  let responseText = "";
   const stream = iteratorToStream(resp.stream);
+  const reader = stream.getReader();
+  
+  // Read the stream and append the content into a response text variable
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  responseText = chunks.join("");
 
-  return new StreamingTextResponse(stream, {
+  // Return the response as JSON after collecting all content
+  const quizQuestions = JSON.parse(responseText); // Ensure the response text is valid JSON
+
+  return new NextResponse(JSON.stringify(quizQuestions), {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "application/json",
       "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Transfer-Encoding": "chunked",
     },
   });
 }
