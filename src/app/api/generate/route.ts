@@ -141,11 +141,18 @@ export async function POST(req: Request) {
 
     // Check if the response contains the expected structure
     if (!resp || !resp.stream) {
-      throw new Error("Invalid API response structure");
+      throw new Error("Invalid API response structure: Missing stream or data.");
     }
 
     // Log the raw response to check for any issues
     console.log('API Response:', resp);
+
+    // Ensure the response stream has valid data
+    if (!resp.stream) {
+      return new NextResponse("No content received from the model.", {
+        status: 500,
+      });
+    }
 
     // Convert the response into a friendly text-stream
     const stream = iteratorToStream(resp.stream);
