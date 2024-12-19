@@ -49,7 +49,7 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
 });
 
 // Function to handle the iterator and stream data properly
-function iteratorToStream(iterator: any) {
+async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
   return new ReadableStream({
     async pull(controller) {
       try {
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
     }
 
     // Convert the response into a friendly text-stream
-    const stream = iteratorToStream(resp.stream);
+    const stream = await iteratorToStream(resp.stream);
 
     // Return the streaming response
     return new StreamingTextResponse(stream, {
