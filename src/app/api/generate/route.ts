@@ -1,8 +1,4 @@
-import {
-  HarmBlockThreshold,
-  HarmCategory,
-  VertexAI,
-} from "@google-cloud/vertexai";
+import { VertexAI, HarmBlockThreshold, HarmCategory } from "@google-cloud/vertexai";
 import { StreamingTextResponse } from "ai";
 import { NextResponse } from "next/server";
 
@@ -49,28 +45,20 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
 });
 
 // Function to handle the iterator and stream data properly
-async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
-  return new ReadableStream({
-    async pull(controller) {
-      try {
-        const { value, done } = await iterator.next();
+async function iteratorToString(iterator: AsyncGenerator<any, any, any>): Promise<string> {
+  let fullStreamData = "";
 
-        if (done || !value) {
-          controller.close();
-        } else {
-          const data = value.candidates[0]?.content?.parts[0]?.text;
-          if (data) {
-            controller.enqueue(data);
-          } else {
-            controller.close();
-          }
-        }
-      } catch (error) {
-        console.error("Stream Error:", error);
-        controller.error(error);
-      }
-    },
-  });
+  for await (const { value, done } of iterator) {
+    if (done || !value) {
+      break;
+    }
+    const data = value.candidates[0]?.content?.parts[0]?.text;
+    if (data) {
+      fullStreamData += data;
+    }
+  }
+
+  return fullStreamData;
 }
 
 // Safe JSON parsing with error handling
@@ -82,16 +70,13 @@ async function safeParseJson(response: string) {
     return JSON.parse(response);
   } catch (error: unknown) {
     if (error instanceof Error) {
-      // If the error is an instance of Error, we can access its message
       console.error("Error parsing JSON:", error.message);
     } else {
-      // If the error is not an instance of Error, we log a general message
       console.error("Error parsing JSON: Unknown error type.");
     }
     throw new Error("Failed to parse JSON");
   }
 }
-
 
 export async function POST(req: Request) {
   try {
@@ -174,10 +159,24 @@ export async function POST(req: Request) {
       });
     }
 
-    // Convert the response into a friendly text-stream
-    const stream = await iteratorToStream(resp.stream);
+    // Convert the stream into a full string
+    const fullStreamData = await iteratorToString(resp.stream);
 
-    // Return the streaming response
+    // Safely parse the string into JSON
+    const parsedResponse = await safeParseJson(fullStreamData);
+
+    // Log the parsed response (optional)
+    console.log("Parsed Response:", parsedResponse);
+
+    // Convert the response into a friendly text-stream
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(fullStreamData);
+        controller.close();
+      },
+    });
+
+    // Create a Response from the stream and return as a readable stream
     return new StreamingTextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
