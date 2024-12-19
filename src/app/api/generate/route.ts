@@ -1,4 +1,8 @@
-import { VertexAI, HarmBlockThreshold, HarmCategory } from "@google-cloud/vertexai";
+import {
+  HarmBlockThreshold,
+  HarmCategory,
+  VertexAI,
+} from "@google-cloud/vertexai";
 import { StreamingTextResponse } from "ai";
 import { NextResponse } from "next/server";
 
@@ -6,7 +10,6 @@ const credentials = JSON.parse(
   Buffer.from(process.env.GOOGLE_SERVICE_KEY || "", "base64").toString()
 );
 
-// Initialize Vertex with your Cloud project and location
 const vertex_ai = new VertexAI({
   project: "nice-opus-445107-u3",
   location: "us-south1",
@@ -16,7 +19,6 @@ const vertex_ai = new VertexAI({
 });
 const model = "gemini-1.5-pro-preview-0409";
 
-// Instantiate the models
 const generativeModel = vertex_ai.preview.getGenerativeModel({
   model: model,
   generationConfig: {
@@ -44,38 +46,52 @@ const generativeModel = vertex_ai.preview.getGenerativeModel({
   ],
 });
 
-// Function to handle the iterator and stream data properly
-async function iteratorToString(iterator: AsyncGenerator<any, any, any>): Promise<string> {
-  let fullStreamData = "";
-
-  for await (const { value, done } of iterator) {
-    if (done || !value) {
-      break;
-    }
-    const data = value.candidates[0]?.content?.parts[0]?.text;
-    if (data) {
-      fullStreamData += data;
-    }
+// Function to validate JSON string
+function isValidJSON(str: string): boolean {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
   }
-
-  return fullStreamData;
 }
 
-// Safe JSON parsing with error handling
-async function safeParseJson(response: string) {
-  try {
-    if (!response) {
-      throw new Error('Empty response');
-    }
-    return JSON.parse(response);
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error("Error parsing JSON:", error.message);
-    } else {
-      console.error("Error parsing JSON: Unknown error type.");
-    }
-    throw new Error("Failed to parse JSON");
-  }
+// Function to handle the iterator and stream data properly
+async function iteratorToStream(iterator: AsyncGenerator<any, any, any>) {
+  let accumulatedText = '';
+  
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { value, done } = await iterator.next();
+
+        if (done) {
+          // Try to parse accumulated text as JSON before closing
+          if (accumulatedText && isValidJSON(accumulatedText)) {
+            controller.enqueue(accumulatedText);
+          }
+          controller.close();
+          return;
+        }
+
+        if (value) {
+          const data = value.candidates[0]?.content?.parts[0]?.text;
+          if (data) {
+            accumulatedText += data;
+            
+            // Only enqueue if we have valid JSON
+            if (isValidJSON(accumulatedText)) {
+              controller.enqueue(accumulatedText);
+              accumulatedText = ''; // Reset accumulated text
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Stream Error:", error);
+        controller.error(error);
+      }
+    },
+  });
 }
 
 export async function POST(req: Request) {
@@ -87,34 +103,34 @@ export async function POST(req: Request) {
     const difficulty = formData.get("difficulty");
     const topic = formData.get("topic");
 
-    // Validate if there are files or notes provided
     if (files.length < 1 && !notes) {
       return new NextResponse("Please provide either a file or notes", {
         status: 400,
       });
     }
 
-    // Construct the prompt text
     const text1 = {
-      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${difficulty || "Easy"}.`,
+      text: `You are an all-rounder tutor with professional expertise in different fields. You are to generate a list of quiz questions from the document(s) with a difficulty of ${difficulty || "Easy"}. The response must be valid JSON.`,
     };
+    
     const text2 = {
-      text: `Your response should be in JSON format as an array of objects below. Respond with ${totalQuizQuestions || 5} different questions.
-      {
-        "id": 1,
-        "question": "",
-        "description": "",
-        "options": {
-          "a": "",
-          "b": "",
-          "c": "",
-          "d": ""
-        },
-        "answer": ""
-      }`,
+      text: `Your response must be a valid JSON array of objects with the following structure for ${totalQuizQuestions || 5} different questions:
+      [
+        {
+          "id": 1,
+          "question": "question text",
+          "description": "description text",
+          "options": {
+            "a": "option a",
+            "b": "option b",
+            "c": "option c",
+            "d": "option d"
+          },
+          "answer": "correct answer letter"
+        }
+      ]`,
     };
 
-    // Convert files to base64
     const filesBase64 = await Promise.all(
       files.map(async (file) => {
         const arrayBuffer = await file.arrayBuffer();
@@ -133,50 +149,18 @@ export async function POST(req: Request) {
     const data =
       files.length > 0 ? filesData : [{ text: notes?.toString() || "No notes" }];
 
-    // Build the body for the request
     const body = {
       contents: [{ role: "user", parts: [text1, ...data, text2] }],
     };
 
-    // Log the body to ensure the structure is correct
-    console.log("Request Body:", JSON.stringify(body, null, 2));
-
-    // Call the generative model API
     const resp = await generativeModel.generateContentStream(body);
 
-    // Check if the response contains the expected structure
     if (!resp || !resp.stream) {
-      throw new Error("Invalid API response structure: Missing stream or data.");
+      throw new Error("Invalid API response: Missing stream or data");
     }
 
-    // Log the raw response to check for any issues
-    console.log('API Response:', resp);
+    const stream = await iteratorToStream(resp.stream);
 
-    // Ensure the response stream has valid data
-    if (!resp.stream) {
-      return new NextResponse("No content received from the model.", {
-        status: 500,
-      });
-    }
-
-    // Convert the stream into a full string
-    const fullStreamData = await iteratorToString(resp.stream);
-
-    // Safely parse the string into JSON
-    const parsedResponse = await safeParseJson(fullStreamData);
-
-    // Log the parsed response (optional)
-    console.log("Parsed Response:", parsedResponse);
-
-    // Convert the response into a friendly text-stream
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(fullStreamData);
-        controller.close();
-      },
-    });
-
-    // Create a Response from the stream and return as a readable stream
     return new StreamingTextResponse(stream, {
       headers: {
         "Content-Type": "text/event-stream",
@@ -186,14 +170,12 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("Error processing the request:", error);
-
-    // Respond with more specific error messages
-    const errorMessage =
-      error instanceof Error ? error.message : "An error occurred while processing your request.";
-
-    return new NextResponse(errorMessage, {
-      status: 500,
-    });
+    console.error("Error processing request:", error);
+    
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : "An error occurred while processing your request";
+      
+    return new NextResponse(errorMessage, { status: 500 });
   }
 }
