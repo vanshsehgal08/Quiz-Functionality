@@ -11,14 +11,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        primary: "#0E85F2",
-        secondary: "#006CD0",
+        primary: "#2D8C45", // Change primary color to green
+        secondary: "#1D6B3B", // Change secondary color to a darker green
         error: "#FB3737",
         success: "#19DB7E",
         dark: "#222222",
         medium: "#555555",
         light: "#fdfcff",
         sunny: "#faf8f0",
+        // Optional: Additional shades of green for more variety
+        greenLight: "#A8E06A", // Light green shade
+        greenDark: "#1A5A2F",  // Dark green shade
       },
       fontFamily: {
         geistmono: ["var(--geistmono)"],
