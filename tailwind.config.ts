@@ -1,29 +1,9 @@
-import type { Config } from "tailwindcss";
-
-const config: Config = {
-  content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
   theme: {
-    extend: {
-      colors: {
-        primary: "#0E85F2",
-        secondary: "#006CD0",
-        error: "#FB3737",
-        success: "#19DB7E",
-        dark: "#222222",
-        medium: "#555555",
-        light: "#fdfcff",
-        sunny: "#faf8f0",
-      },
-      fontFamily: {
-        geistmono: ["var(--geistmono)"],
-        geistsans: ["var(--geist-sans)"],
-      },
-    },
+    extend: {},
   },
-  plugins: [require("@tailwindcss/forms")],
+  plugins: [],
 };
-export default config;
