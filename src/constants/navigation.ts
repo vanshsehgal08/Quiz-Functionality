@@ -1,8 +1,8 @@
 export const MAIN_NAVIGATION = [
-  { path: '/ai-assistant', label: 'AI Assistant' },
+  { path: 'https://chat-bot-functionality.vercel.app/', label: 'AI Assistant' },
   { path: '/videos', label: 'Videos' },
   { path: '/calculator', label: 'CO2 Calculator' },
-  { path: '/quiz', label: 'Quiz' },
+  { path: 'https://quiz-functionality.vercel.app/', label: 'Quiz' },
   { path: '/news', label: 'News' },
 ] as const;
 
