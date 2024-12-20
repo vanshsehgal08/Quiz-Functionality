@@ -21,10 +21,10 @@ export default function Navbar() {
 
     // Define the navigation links with empty URLs
     const navButtons = [
-        { name: "AI Assistant", url: "" },
+        { name: "AI Assistant", url: "https://chat-bot-functionality-git-main-vanshsehgal08s-projects.vercel.app/" },
         { name: "Videos", url: "" },
         { name: "CO2 Calculator", url: "" },
-        { name: "Quiz", url: "" },
+        { name: "Quiz", url: "https://quiz-functionality.vercel.app/" },
         { name: "News", url: "" },
     ];
 
