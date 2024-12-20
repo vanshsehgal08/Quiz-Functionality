@@ -1,13 +1,13 @@
 import React from 'react';
 
-interface FooterLink {
+export interface FooterLink {
   href: string;
   label: string;
 }
 
 interface FooterSectionProps {
   title: string;
-  links: FooterLink[];
+  links: readonly FooterLink[];
 }
 
 export default function FooterSection({ title, links }: FooterSectionProps) {
@@ -19,7 +19,7 @@ export default function FooterSection({ title, links }: FooterSectionProps) {
           <li key={link.href}>
             <a
               href={link.href}
-              className="text-green-100 hover:text-white dark:text-green-200 dark:hover:text-white transition-colors"
+              className="text-green-100 hover:text-white transition-colors"
             >
               {link.label}
             </a>
