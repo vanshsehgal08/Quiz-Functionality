@@ -1,6 +1,6 @@
 export const MAIN_NAVIGATION = [
   { path: 'https://chat-bot-functionality.vercel.app/', label: 'AI Assistant' },
-  { path: '/videos', label: 'Videos' },
+  { path: 'https://video-functionality.vercel.app/', label: 'Videos' },
   { path: '/calculator', label: 'CO2 Calculator' },
   { path: 'https://quiz-functionality.vercel.app/', label: 'Quiz' },
   { path: '/news', label: 'News' },
